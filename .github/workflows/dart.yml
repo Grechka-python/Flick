@@ -1,0 +1,35 @@
+name: Flutter Frontend Build
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.16.0'
+    
+    - name: Install dependencies
+      run: |
+        cd frontend
+        flutter pub get
+    
+    - name: Build web
+      run: |
+        cd frontend
+        flutter build web --release
+    
+    - name: Upload web build
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-web
+        path: frontend/build/web/
