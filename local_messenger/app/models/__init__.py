@@ -1,22 +1,48 @@
 """
 Модели базы данных для локального мессенджера.
 Используется SQLAlchemy с асинхронной поддержкой.
+Поддержка PostgreSQL и SQLite.
 """
 
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List
 from uuid import UUID, uuid4
+import os
 
 from sqlalchemy import (
     Column, String, Text, Boolean, BigInteger, Integer,
-    ForeignKey, DateTime, UniqueConstraint, Index, Enum as SQLEnum
+    ForeignKey, DateTime, UniqueConstraint, Index, Enum as SQLEnum, CHAR
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, INET, TSVECTOR
 from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy.sql import func
 
 Base = declarative_base()
+
+
+# Определяем тип UUID в зависимости от БД
+use_sqlite = os.getenv("USE_SQLITE", "false").lower() == "true"
+if use_sqlite:
+    # Для SQLite используем CHAR(36) для хранения UUID как строки
+    def GUID():
+        return CHAR(36)
+    # Для SQLite используем TEXT для IP адресов
+    def IP_ADDRESS():
+        return Text
+    # Для SQLite не используем полнотекстовый поиск
+    def SEARCH_VECTOR():
+        return Text
+else:
+    # Для PostgreSQL используем родной UUID тип
+    def GUID():
+        return PGUUID(as_uuid=True)
+    # Для PostgreSQL используем родной INET тип
+    def IP_ADDRESS():
+        return INET
+    # Для PostgreSQL используем полнотекстовый поиск
+    def SEARCH_VECTOR():
+        return TSVECTOR
 
 
 class ChatType(str, Enum):
@@ -49,7 +75,7 @@ class User(Base):
     """Таблица пользователей"""
     __tablename__ = "users"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id = Column(GUID(), primary_key=True, default=uuid4)
     username = Column(String(50), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     email = Column(String(255))
@@ -77,11 +103,11 @@ class Session(Base):
     """Таблица сессий пользователей"""
     __tablename__ = "sessions"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id = Column(GUID(), primary_key=True, default=uuid4)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     device_name = Column(String(100))
     device_type = Column(SQLEnum(DeviceType))
-    ip_address = Column(INET)
+    ip_address = Column(IP_ADDRESS())
     access_token_hash = Column(String(255), nullable=False)
     refresh_token_hash = Column(String(255))
     is_active = Column(Boolean, default=True)
@@ -104,12 +130,12 @@ class Chat(Base):
     """Таблица чатов (личные, группы, каналы)"""
     __tablename__ = "chats"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id = Column(GUID(), primary_key=True, default=uuid4)
     chat_type = Column(SQLEnum(ChatType), nullable=False)
     name = Column(String(255))
     description = Column(Text)
     avatar_url = Column(Text)
-    owner_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id"))
+    owner_id = Column(GUID(), ForeignKey("users.id"))
     max_participants = Column(Integer, default=200)
     is_read_only = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -132,9 +158,9 @@ class ChatMember(Base):
     """Участники чатов"""
     __tablename__ = "chat_members"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    chat_id = Column(PGUUID(as_uuid=True), ForeignKey("chats.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id = Column(GUID(), primary_key=True, default=uuid4)
+    chat_id = Column(GUID(), ForeignKey("chats.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     role = Column(SQLEnum(MemberRole), default=MemberRole.MEMBER)
     joined_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -155,20 +181,20 @@ class Message(Base):
     """Таблица сообщений"""
     __tablename__ = "messages"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    chat_id = Column(PGUUID(as_uuid=True), ForeignKey("chats.id", ondelete="CASCADE"), nullable=False)
-    sender_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id"))
+    id = Column(GUID(), primary_key=True, default=uuid4)
+    chat_id = Column(GUID(), ForeignKey("chats.id", ondelete="CASCADE"), nullable=False)
+    sender_id = Column(GUID(), ForeignKey("users.id"))
     content = Column(Text)
     message_type = Column(SQLEnum(MessageType), default=MessageType.TEXT)
-    reply_to_id = Column(PGUUID(as_uuid=True), ForeignKey("messages.id"))
-    forwarded_from_id = Column(PGUUID(as_uuid=True), ForeignKey("messages.id"))
+    reply_to_id = Column(GUID(), ForeignKey("messages.id"))
+    forwarded_from_id = Column(GUID(), ForeignKey("messages.id"))
     edited_at = Column(DateTime(timezone=True))
     deleted_at = Column(DateTime(timezone=True))
     is_pinned = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Для полнотекстового поиска (PostgreSQL)
-    search_vector = Column(TSVECTOR)
+    search_vector = Column(SEARCH_VECTOR())
 
     # Relationships
     chat = relationship("Chat", back_populates="messages")
@@ -193,9 +219,9 @@ class Reaction(Base):
     """Реакции на сообщения"""
     __tablename__ = "reactions"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    message_id = Column(PGUUID(as_uuid=True), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id = Column(GUID(), primary_key=True, default=uuid4)
+    message_id = Column(GUID(), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     emoji = Column(String(10), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -215,8 +241,8 @@ class Media(Base):
     """Медиафайлы"""
     __tablename__ = "media"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    message_id = Column(PGUUID(as_uuid=True), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
+    id = Column(GUID(), primary_key=True, default=uuid4)
+    message_id = Column(GUID(), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
     file_path = Column(Text, nullable=False)
     file_size = Column(BigInteger, nullable=False)
     mime_type = Column(String(100))
@@ -237,9 +263,9 @@ class SecretChat(Base):
     """Секретные чаты с end-to-end шифрованием"""
     __tablename__ = "secret_chats"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    user1_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    user2_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    id = Column(GUID(), primary_key=True, default=uuid4)
+    user1_id = Column(GUID(), ForeignKey("users.id"), nullable=False)
+    user2_id = Column(GUID(), ForeignKey("users.id"), nullable=False)
     encryption_key_hash = Column(String(255))
     self_destruct_timer = Column(Integer)  # в секундах
     is_active = Column(Boolean, default=True)
@@ -257,9 +283,9 @@ class ReadReceipt(Base):
     """Статусы прочтения сообщений"""
     __tablename__ = "read_receipts"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    message_id = Column(PGUUID(as_uuid=True), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id = Column(GUID(), primary_key=True, default=uuid4)
+    message_id = Column(GUID(), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     read_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships

@@ -1,5 +1,5 @@
 """
-Асинхронное подключение к базе данных PostgreSQL.
+Асинхронное подключение к базе данных PostgreSQL или SQLite.
 """
 
 from typing import AsyncGenerator
@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import (
     AsyncEngine,
 )
 from sqlalchemy.orm import sessionmaker
+import os
 
 from app.core.config import settings
 
@@ -23,13 +24,35 @@ class Database:
 
     async def connect(self):
         """Подключение к базе данных"""
-        self.engine = create_async_engine(
-            settings.DATABASE_URL,
-            echo=settings.DEBUG,
-            pool_size=settings.DB_POOL_SIZE,
-            max_overflow=settings.DB_MAX_OVERFLOW,
-            pool_pre_ping=True,
-        )
+        # Используем SQLite для тестирования если PostgreSQL недоступен
+        use_sqlite = os.getenv("USE_SQLITE", "false").lower() == "true"
+        
+        if use_sqlite:
+            database_url = "sqlite+aiosqlite:///./messenger.db"
+            self.engine = create_async_engine(
+                database_url,
+                echo=settings.DEBUG,
+                connect_args={"check_same_thread": False},
+            )
+        else:
+            try:
+                self.engine = create_async_engine(
+                    settings.DATABASE_URL,
+                    echo=settings.DEBUG,
+                    pool_size=settings.DB_POOL_SIZE,
+                    max_overflow=settings.DB_MAX_OVERFLOW,
+                    pool_pre_ping=True,
+                )
+            except Exception as e:
+                print(f"Warning: Could not connect to PostgreSQL: {e}")
+                print("Falling back to SQLite for development")
+                database_url = "sqlite+aiosqlite:///./messenger.db"
+                self.engine = create_async_engine(
+                    database_url,
+                    echo=settings.DEBUG,
+                    connect_args={"check_same_thread": False},
+                )
+        
         self.async_session_maker = async_sessionmaker(
             self.engine,
             class_=AsyncSession,
