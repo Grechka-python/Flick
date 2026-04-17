@@ -38,13 +38,12 @@ class ConnectionManager:
 
     def disconnect(self, user_id: UUID):
         """Отключение пользователя"""
-        async with self._lock:
-            if user_id in self.active_connections:
-                del self.active_connections[user_id]
-            # Удаляем из всех подписок
-            for chat_id in list(self.chat_subscriptions.keys()):
-                if user_id in self.chat_subscriptions.get(chat_id, set()):
-                    self.chat_subscriptions[chat_id].discard(user_id)
+        if user_id in self.active_connections:
+            del self.active_connections[user_id]
+        # Удаляем из всех подписок
+        for chat_id in list(self.chat_subscriptions.keys()):
+            if user_id in self.chat_subscriptions.get(chat_id, set()):
+                self.chat_subscriptions[chat_id].discard(user_id)
 
     async def subscribe_to_chat(self, user_id: UUID, chat_id: UUID):
         """Подписка пользователя на обновления чата"""
