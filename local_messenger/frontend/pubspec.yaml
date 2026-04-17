@@ -1,0 +1,42 @@
+name: local_messenger
+description: Локальный мессенджер с сине-оранжевым дизайном
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  provider: ^6.1.1
+  http: ^1.1.0
+  web_socket_channel: ^2.4.0
+  shared_preferences: ^2.2.2
+  image_picker: ^1.0.5
+  file_picker: ^6.1.1
+  emoji_picker_flutter: ^2.0.0
+  cached_network_image: ^3.3.0
+  flutter_local_notifications: ^16.3.0
+  qr_flutter: ^4.1.0
+  intl: ^0.18.1
+  encrypt: ^5.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    
+  fonts:
+    - family: Roboto
+      fonts:
+        - asset: fonts/Roboto-Regular.ttf
+        - asset: fonts/Roboto-Bold.ttf
+          weight: 700
